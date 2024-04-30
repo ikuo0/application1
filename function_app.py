@@ -1,29 +1,27 @@
-import azure.functions as func
+
+#import azure.functions as func
+#from azure.functions import HttpRequest, HttpResponse
+import azure.functions
 import datetime
 import json
 import logging
+import app.routes.identity
+#from app.routes.middleware import common_middleware
+import fastapi
+#from fastapi.middleware.trustedhost import TrustedHostMiddleware
+#import fastapi.middleware.trustedhost
+import time
 
-app = func.FunctionApp()
+fast_app = fastapi.FastAPI()
 
-@app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS)
-def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Python HTTP trigger function processed a request.')
+@fast_app.middleware("http")
+async def add_process_time_header(request: fastapi.Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    print("start_time={}, process_time={}".format(start_time, process_time))
+    return response
 
-    name = req.params.get('name')
-    if not name:
-        try:
-            req_body = req.get_json()
-        except ValueError:
-            pass
-        else:
-            name = req_body.get('name')
-
-    if name:
-        return func.HttpResponse(f"Hello, {name}. This HTTP triggered function executed successfully.")
-    else:
-        return func.HttpResponse(
-             "HOGEHOGE",
-             status_code=200
-        )
-
-
+fast_app.include_router(app.routes.identity.router, prefix="/api/identity")
+app = azure.functions.AsgiFunctionApp(app=fast_app, http_auth_level=azure.functions.AuthLevel.ANONYMOUS)
